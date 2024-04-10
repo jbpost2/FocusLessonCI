@@ -113,7 +113,9 @@ server <- function(session, input, output) {
     #add it to the db
     con <- DBI::dbConnect(RSQLite::SQLite(), "class_data.sqlite")
     on.exit(DBI::dbDisconnect(con))
-    if(DBI::dbIsValid(con) && !DBI::dbExistsTable(con, my_db)){
+    if(my_db == ""){
+      shinyalert(title = "Oh no!", "You must supply a name for the data table you want to work with!", type = "error")
+    } else if(DBI::dbIsValid(con) && !DBI::dbExistsTable(con, my_db)){
       DBI::dbWriteTable(con, my_db, data_df)
     } else if(DBI::dbIsValid(con)){
       #grab data, check that sample size is the same (later restrictions)
