@@ -5,6 +5,7 @@ library(DBI)
 library(callr)
 library(RSQLite)
 library(plotly)
+library(shinyalert)
 #library(data.table)
 #plotrix, tidyverse, and tidycensus read in via helpers.R
 
@@ -73,9 +74,19 @@ ui <- dashboardPage(
                 # Show a plot of the generated CIs
                 mainPanel(
                   fluidRow(
-                    actionButton("update_plot", label = "Check for new data and refresh plot"),
-                    plotlyOutput("CI_plots"),
-                    uiOutput("info")
+                    #actionButton("update_plot", label = "Check for new data and refresh plot"),
+                    plotlyOutput("CI_plots")
+                  ),
+                  br(),
+                  fluidRow(
+                    box(
+                      title = "Information about your current dataset",
+                      dataTableOutput("data_set_info"),
+                      width = 6),
+                    box(title = "Information about the above CIs",
+                        uiOutput("info"),
+                      width = 6
+                    )
                   )
                 )
               )
@@ -110,7 +121,7 @@ server <- function(session, input, output) {
       if(current_df$n[1] == n){
         DBI::dbWriteTable(con, my_db, data_df, append = TRUE)
       } else {
-        print("No good, sample size mismatch")
+        shinyalert(title = "Oh no!", paste0("The data table ", my_db, " already has data in it with a sample size of ", current_df$n[1], ". We can't add data with a different sample size."), type = "error")
       }
     }
   })
@@ -119,7 +130,7 @@ server <- function(session, input, output) {
   output$CI_plots <- renderPlotly({
     #grab the data
     input$sample
-    input$update_plot
+    #input$update_plot
     my_db <- input$db    
     type <- input$ci_type
     alpha <- 1- input$conf
@@ -138,18 +149,57 @@ server <- function(session, input, output) {
   })
 
   output$info <- renderUI({
+    #grab the data
     input$sample
+    #input$update_plot
+    my_db <- input$db    
+    type <- input$ci_type
+    alpha <- 1- input$conf
+    
     con <- DBI::dbConnect(RSQLite::SQLite(), "class_data.sqlite")
     on.exit(DBI::dbDisconnect(con))
-    my_db <- input$db
     if (my_db != "" && DBI::dbExistsTable(con, my_db)){
-      ci_df <- dbGetQuery(con, paste0("select * from ", my_db))
-      prop <- mean(ci_df$lower < truth_p & ci_df$upper > truth_p)
-      p(paste0("The true proportion of people on food stamps from this population is ", round(truth_p, 4), ". \nFrom the set of confidence intervals above, ", 100*round(prop, 4), "% of the intervals contain this population value."))
+      data_df <- dbGetQuery(con, paste0("select * from ", my_db))
+      #now add the appropriate CI to the plot
+      ci_df <- add_ci(data_df, type = type, alpha = alpha)
+      
+      prop <- mean(ci_df$lower < ci_df$truth & ci_df$upper > ci_df$truth)
+      tagList(p(paste0("The true proportion of people aged 18 to 30 receiving SNAP benefits in the US is ", round(ci_df$truth[1], 4), ". \nFrom the set of confidence intervals above, ", 100*round(prop, 4), "% of the intervals contain this population value.")))
     } else {
-      p("Type a name for a data table in the box on the left. If there is not data in the table, no plot will show. You can hit the 'Get a Sample!' button to generate a data set and corresponding confidence interval.")
+      tagList(HTML("<ul><li>Select a data table in the top left box.</li><li>Place your name or group name in the box below.</li><li>Choose the type of interval you want to create, sample size (must match other samples in the data table), confidence level, and sample size.</li><li>Then click 'Get a Sample!' to draw a sample and create a confidence interval for the p = P(SNAP recipient)!</li></ul>"))
     }
 
+  })
+  
+  
+  output$data_set_info <- renderDataTable({
+    #grab the data
+    input$sample
+    #input$update_plot
+    my_db <- input$db    
+    type <- input$ci_type
+    alpha <- 1- input$conf
+    
+    con <- DBI::dbConnect(RSQLite::SQLite(), "class_data.sqlite")
+    on.exit(DBI::dbDisconnect(con))
+    if (my_db != "" && DBI::dbExistsTable(con, my_db)){
+      data_df <- dbGetQuery(con, paste0("select * from ", my_db))
+      #now add the appropriate CI to the plot
+      ci_df <- add_ci(data_df, type = type, alpha = alpha)
+      ci_df %>% 
+        mutate(p_hat = round(y/n, 4)) %>% 
+        select(group, y, p_hat, lower, upper, col) %>% 
+        mutate(lower = round(lower, 4), upper = round(upper, 4)) %>%
+        DT::datatable(options = list(
+          columnDefs = list(list(targets = 5, visible = FALSE))
+        ), rownames = FALSE) %>%
+        formatStyle(columns = c("lower", "upper"),
+                    valueColumns = "col",
+                    target = "cell",
+                    backgroundColor = styleEqual(c("Black", "Red"), c("springgreen", "tomato")))
+    } else {
+      NULL
+    }
   })
 }
 
