@@ -447,6 +447,11 @@ FLANXPvals <- c(#"Language other than English allocation flag",
   "1"= "Yes"
   )
 
+WAOBvals2 <- WAOBvals %>% 
+  str_split(" \\(") %>% 
+  sapply(FUN = function(x){x[1]})
+names(WAOBvals2) <- names(WAOBvals)
+
 
 #########################################
 #functions to create intervals
