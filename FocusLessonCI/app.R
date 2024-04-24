@@ -97,16 +97,17 @@ ui <- dashboardPage(
                       titlePanel("Investigating the Data"),
                       fluidPage(
                         fluidRow(
-                          p("Information about the data we are investigating and the purpose of what we'll be doing..."),
+                          p("Information about the data we are investigating and the purpose of what we'll be doing... Note to me: should consider value boxes"),
                           br(),
                           actionButton('reset', "Reset This Exercise")
                         ),
                         br(),
                         fluidRow(
-                          box(title = "How wide do you want your 95% confidence interval to be?",
+                          box(title = "Roughly how wide do you want your 95% confidence interval to be?",
+                              width = 8,
                             fluidRow(
                               column(9, 
-                                sliderInput("width", NULL, value = 0.05, min = 0.01, max = 0.5)
+                                sliderInput("width", NULL, value = 0.1, min = 0.05, max = 0.5)
                               ), 
                               column(3, 
                                 actionButton("sub_width", "Go!")
@@ -119,75 +120,11 @@ ui <- dashboardPage(
                         ),
                         uiOutput("sub_pop_ui"),
                         uiOutput("generate_sample"),
-                        fluidRow(
-                            box(title = "Enter your sample proportion (to 4 decimal places):",
-                                fluidRow(
-                                  column(9, 
-                                         numericInput("proportion", NULL, value = NULL, min = 0, max = 1)
-                                  ), 
-                                  column(3, 
-                                         actionButton("submit_proportion", "Submit!")
-                                  )
-                                ),
-                                fluidRow(
-                                  column(12, uiOutput("prop_information"))
-                                )
-                            )
-                        ),
-                        fluidRow(
-                          box(title = "Enter the (estimated) margin of error for your sample proportion (to 4 decimal places):",
-                              fluidRow(
-                                column(9, 
-                                       numericInput("MOE", NULL, value = NULL, min = 0)
-                                ), 
-                                column(3, 
-                                       actionButton("submit_MOE", "Submit!")
-                                )
-                              ),
-                              fluidRow(
-                                column(12, uiOutput("MOE_information"))
-                              )
-                          )
-                        ),
-                        fluidRow(
-                          box(title = "Which type of confidence interval do you want to create?",
-                              fluidRow(
-                                column(12, 
-                                  radioButtons('type_of_ci_2nd', 
-                                             label = NULL,
-                                             choices = c("Parametric", "Bootstrap"), 
-                                             inline = TRUE)
-                                )
-                              ),
-                              fluidRow(
-                                column(12, uiOutput("CI_choice"))
-                              ),
-                              conditionalPanel("input.type_of_ci_2nd == 'Bootstrap'",
-                                fluidRow(
-                                  plotlyOutput("boot_graph")
-                                )
-                              )
-                          )
-                        ),
-                        fluidRow(
-                          box(title = "Enter the lower and upper bounds for a 95% confidence interval (to 4 decimal places):",
-                              fluidRow(
-                                column(4, 
-                                       numericInput("lower", NULL, value = NULL, min = 0)
-                                ), 
-                                column(4, 
-                                       numericInput("upper", NULL, value = NULL, min = 0)
-                                ),
-                                column(3, 
-                                       actionButton("submit_ci", "Submit!")
-                                )
-                              ),
-                              fluidRow(
-                                column(12, uiOutput("CI_information"))
-                              )
-                          )
-                        )
-              )
+                        uiOutput("sub_proportion"),
+                        uiOutput("sub_MOE"),
+                        uiOutput("select_ci_type"),
+                        uiOutput("sub_ci")
+                      )
       )
     )
   )
@@ -326,7 +263,10 @@ server <- function(session, input, output) {
                                  CIupper = NULL,
                                  CIupper_correct = FALSE,
                                  CIboot_values = NULL,
-                                 sample_info_message = NULL)
+                                 sample_info_message = NULL,
+                                 phat_formula = FALSE,
+                                 MOE_formula = FALSE,
+                                 CI_formula = FALSE)
 
   observeEvent(input$reset, {
     second_tab_info$message <- NULL
@@ -335,6 +275,7 @@ server <- function(session, input, output) {
     dynamic_ui$show_MOE <- FALSE
     dynamic_ui$show_CI <- FALSE
     second_tab_info$sample_info_message <- NULL
+    second_tab_info$phat_formula <- FALSE
   })
   
   observeEvent(input$sub_width, {
@@ -357,6 +298,7 @@ server <- function(session, input, output) {
     if(dynamic_ui$show_subset){
       fluidRow(
         box(title = "What (sub) population do you want to investigate?",
+            width = 8,
             radioButtons('hhl',
                          label = "Household Language", 
                          choices = c("Include All", unname(HHLvals)[c(4)], "Not English Only"), 
@@ -385,10 +327,11 @@ server <- function(session, input, output) {
     if(dynamic_ui$show_subset){
       fluidRow(
         box(title = "Generate a sample from your population:",
+            width = 8,
             id = "get_sample",
             fluidRow(
               column(9, 
-                     sliderInput("sample_size_2", "Sample Size", min = 50, max = 1000, value = 300)
+                     sliderInput("sample_size_2", "Sample Size", min = 50, max = 1300, value = 300)
               ), 
               column(3, 
                      actionButton("sample_it", "Get Sample!")
@@ -405,10 +348,10 @@ server <- function(session, input, output) {
   observeEvent(input$sample_it, {
     n <- input$sample_size_2
     hhl <- input$hhl
-    waob <- input$waob
+    #waob <- input$waob
     fer <- input$fer
     fschp <- input$fschp
-    state <- input$state
+    #state <- input$state
 
     if(hhl == "Include All"){
       hhl <- HHLvals
@@ -441,13 +384,45 @@ server <- function(session, input, output) {
              FSCHP %in% names(FSCHPvals[which(FSCHPvals %in% fschp)]))
     second_tab_info$subset_max <- nrow(full_subset)
     second_tab_info$full_subset <- full_subset
+    
+    dynamic_ui$show_proportion <- TRUE
+    dynamic_ui$show_MOE <- FALSE
+    dynamic_ui$show_CI <- FALSE
+    second_tab_info$phat_correct <- FALSE
   })
 
-  observe({
+  observeEvent(ignoreInit = TRUE, list(input$hhl, input$fer, input$fschp), {
+    n <- input$sample_size_2
+    hhl <- input$hhl
+    fer <- input$fer
+    fschp <- input$fschp
+
+    if(hhl == "Include All"){
+      hhl <- HHLvals
+    } else if(hhl == "Not English Only"){
+      hhl <- HHLvals[-4]
+    }
+    if (fer == "Include All"){
+      fer <- FERvals
+    } else if(fer == "No"){
+      fer <- FERvals[1:2]
+    }
+    if (fschp == "Include All"){
+      fschp <- FSCHPvals
+    }
+    
+    #get the subset
+    full_subset <- my_sample %>%
+      filter(HHL %in% names(HHLvals[which(HHLvals %in% hhl)]),
+             FER %in% names(FERvals[which(FERvals %in% fer)]),
+             FSCHP %in% names(FSCHPvals[which(FSCHPvals %in% fschp)]))
+    rows <- nrow(full_subset)
+    
+    
     updateSliderInput(session, 
                       "sample_size_2", 
-                      max = min(1000, second_tab_info$subset_max), 
-                      value = min(input$sample_size_2, second_tab_info$subset_max))
+                      max = min(1300, rows), 
+                      value = min(input$sample_size_2, rows))
   })
 
   observeEvent(input$sample_it, {
@@ -497,50 +472,140 @@ server <- function(session, input, output) {
                                                             " is ",
                                                             second_tab_info$y, 
                                                             ".")))
+    
+    second_tab_info$phat_formula <- FALSE
+    second_tab_info$MOE_formula <- FALSE
+    second_tab_info$CI_formula <- FALSE
   })
 
   output$sample_information <- renderUI({
       second_tab_info$sample_info_message
   })
   
+  output$sub_proportion <- renderUI({
+    if(dynamic_ui$show_proportion){
+      fluidRow(
+        box(title = "Enter your sample proportion (to 4 decimal places):",
+            width = 8,
+            fluidRow(
+              column(9, 
+                     numericInput("proportion", NULL, value = NULL, min = 0, max = 1)
+              ), 
+              column(3, 
+                     actionButton("submit_proportion", "Submit!")
+              )
+            ),
+            fluidRow(
+              column(12, uiOutput("prop_information"))
+            )
+        )
+      )
+    }
+  })
+  
   observeEvent(input$submit_proportion, {
-    if (round(input$proportion, 3) == round(second_tab_info$phat, 3)){
-      second_tab_info$phat_correct <- TRUE
+    if(!is.numeric(input$proportion)){
+      shinyalert(title = "Oh no!", "You must supply a number between 0 and 1!", type = "error")
     } else {
-      second_tab_info$phat_correct <- FALSE
+      if (round(input$proportion, 3) == round(second_tab_info$phat, 3)){
+        second_tab_info$phat_correct <- TRUE
+        dynamic_ui$show_MOE <- TRUE
+      } else {
+        second_tab_info$phat_correct <- FALSE
+        dynamic_ui$show_MOE <- FALSE
+        second_tab_info$phat_formula <- TRUE
+      }
     }
   })
   
   output$prop_information <- renderUI({
     if(second_tab_info$phat_correct){
       tagList(p("Correct!"))
-    } else {
+    } else if (second_tab_info$phat_formula){
       tagList(p("Incorrect. Remember the sample proportion is the number of successes divided by the sample size."))
+    } else {
+      #empty message
+    }
+  })
+  
+  output$sub_MOE <- renderUI({
+    if(dynamic_ui$show_MOE){
+      fluidRow(
+        box(title = "Enter the (estimated) margin of error for your sample proportion (to 4 decimal places):",
+            width = 8,
+            fluidRow(
+              column(9,
+                     numericInput("MOE", NULL, value = NULL, min = 0)
+              ),
+              column(3,
+                     actionButton("submit_MOE", "Submit!")
+              )
+            ),
+            fluidRow(
+              column(12, uiOutput("MOE_information"))
+            )
+        )
+      )
     }
   })
   
   observeEvent(input$submit_MOE, {
-    if (round(input$MOE, 3) == round(second_tab_info$MOE, 3)){
-      second_tab_info$MOE_correct <- TRUE
+    if(!is.numeric(input$MOE)){
+      shinyalert(title = "Oh no!", "You must supply a positive number.", type = "error")
     } else {
-      second_tab_info$MOE_correct <- FALSE
+      if (round(input$MOE, 3) == round(second_tab_info$MOE, 3)){
+        second_tab_info$MOE_correct <- TRUE
+        dynamic_ui$show_CI <- TRUE
+      } else {
+        second_tab_info$MOE_correct <- FALSE
+        dynamic_ui$show_CI <- FALSE
+        second_tab_info$MOE_formula <- TRUE
+      }
     }
   })
   
   output$MOE_information <- renderUI({
     if(second_tab_info$MOE_correct){
       tagList(p("Correct!"))
-    } else {
+    } else if(second_tab_info$MOE_formula){
       tagList(p("Incorrect. Remember the (estimated) standard error of your sample proportion is the square root of phat*(1-phat)/n."))
+    } else{
+      #blank on purpose
     }
   })
   
-  observeEvent(ignoreInit = TRUE, list(input$sample_it, input$type_of_ci_2nd), {
+  output$select_ci_type <- renderUI({
+    if(dynamic_ui$show_CI){
+      fluidRow(
+        box(title = "Which type of confidence interval do you want to create?",
+            width = 8,
+            fluidRow(
+              column(12,
+                     radioButtons('type_of_ci_2nd',
+                                  label = NULL,
+                                  choices = c("Parametric", "Bootstrap"),
+                                  inline = TRUE)
+              )
+            ),
+            fluidRow(
+              column(12, uiOutput("CI_choice"))
+            ),
+            conditionalPanel("input.type_of_ci_2nd == 'Bootstrap'",
+                             fluidRow(
+                               plotlyOutput("boot_graph")
+                             )
+            )
+        )
+      )
+    }
+  })
+  
+  observeEvent(input$type_of_ci_2nd, {
     second_tab_info$subset <- my_subset
-    
+
     if (input$type_of_ci_2nd == "Parametric"){
-      second_tab_info$CIlower <- second_tab_info$phat - qnorm(0.975) * second_tab_info$MOE
-      second_tab_info$CIupper <- second_tab_info$phat + qnorm(0.975) * second_tab_info$MOE
+      second_tab_info$CIlower <- round(second_tab_info$phat,4) - round(qnorm(0.975),2) * round(second_tab_info$MOE,4)
+      second_tab_info$CIupper <- round(second_tab_info$phat,4) + round(qnorm(0.975),2) * round(second_tab_info$MOE,4)
     } else if (input$type_of_ci_2nd == "Bootstrap") {
       phats <- rbinom(10000, size = input$sample_size_2, prob = second_tab_info$phat)/input$sample_size_2
       second_tab_info$CIboot_values <- phats
@@ -550,47 +615,79 @@ server <- function(session, input, output) {
   })
   
   output$boot_graph <- renderPlotly({
-    
+
     if(input$type_of_ci_2nd == "Parametric"){
       NULL
     } else if (input$type_of_ci_2nd == "Bootstrap"){
-      
+
       xs <- c(1:999)/1000 + 0.0005
-      
+
       my_plot_data <- tibble(phat = second_tab_info$CIboot_values) %>%
         arrange(phat) %>%
         mutate(Quantile = findInterval(phat, quantile(phat, xs))/1000)
 
-      g <- ggplot(my_plot_data, aes(x = phat)) + 
+      g <- ggplot(my_plot_data, aes(x = phat)) +
         geom_histogram(bins = 50, fill = "black", aes(group = Quantile))
-    
+
       ggplotly(g, tooltip = c("x", "group"))
     }
   })
   
+  output$sub_ci <- renderUI({
+    if(dynamic_ui$show_CI){
+      fluidRow(
+        box(title = "Enter the lower and upper bounds for a 95% confidence interval (to 4 decimal places):",
+            width = 8,
+            fluidRow(
+              column(4,
+                     numericInput("lower", NULL, value = NULL, min = 0)
+              ),
+              column(4,
+                     numericInput("upper", NULL, value = NULL, min = 0)
+              ),
+              column(3,
+                     actionButton("submit_ci", "Submit!")
+              )
+            ),
+            fluidRow(
+              column(12, uiOutput("CI_information"))
+            )
+        )
+      )
+    }
+  })
+  
   observeEvent(input$submit_ci, {
-    if(input$type_of_ci_2nd == "Parametric"){
-      if (round(input$lower, 3) == round(second_tab_info$CIlower, 3)){
-        second_tab_info$CIlower_correct <- TRUE
-      } else {
-        second_tab_info$CIlower_correct <- FALSE
+    if(is.numeric(input$lower) & is.numeric(input$upper)){
+      if(input$type_of_ci_2nd == "Parametric"){
+        if ((round(input$lower, 3) <= round(second_tab_info$CIlower, 3) + 0.001) & (round(input$lower, 3) >= round(second_tab_info$CIlower, 3) - 0.001)){
+          second_tab_info$CIlower_correct <- TRUE
+        } else {
+          second_tab_info$CIlower_correct <- FALSE
+          second_tab_info$CI_formula <- TRUE
+        }
+        if ((round(input$upper, 3) <= round(second_tab_info$CIupper, 3) + 0.001) & (round(input$upper, 3) >= round(second_tab_info$CIupper, 3) - 0.001)){
+          second_tab_info$CIupper_correct <- TRUE
+        } else {
+          second_tab_info$CIupper_correct <- FALSE
+          second_tab_info$CI_formula <- TRUE
+        }
+      } else if (input$type_of_ci_2nd == "Bootstrap"){
+        if ((input$lower <= second_tab_info$CIlower[2]+0.001) & (input$lower >= second_tab_info$CIlower[1]-0.001)){
+          second_tab_info$CIlower_correct <- TRUE
+        } else {
+          second_tab_info$CIlower_correct <- FALSE
+          second_tab_info$CI_formula <- TRUE
+        }
+        if ((input$upper <= second_tab_info$CIupper[2]+0.001) & (input$upper >= second_tab_info$CIupper[1]-0.001)){
+          second_tab_info$CIupper_correct <- TRUE
+        } else {
+          second_tab_info$CIupper_correct <- FALSE
+          second_tab_info$CI_formula <- TRUE
+        }
       }
-      if (round(input$upper, 3) == round(second_tab_info$CIupper, 3)){
-        second_tab_info$CIupper_correct <- TRUE
-      } else {
-        second_tab_info$CIupper_correct <- FALSE
-      }
-    } else if (input$type_of_ci_2nd == "Bootstrap"){
-      if ((input$lower <= second_tab_info$CIlower[2]) & (input$lower >= second_tab_info$CIlower[1])){
-        second_tab_info$CIlower_correct <- TRUE
-      } else {
-        second_tab_info$CIlower_correct <- FALSE
-      }
-      if ((input$upper <= second_tab_info$CIupper[2]) & (input$upper >= second_tab_info$CIupper[1])){      
-        second_tab_info$CIupper_correct <- TRUE
-      } else {
-        second_tab_info$CIupper_correct <- FALSE
-      }
+    } else {
+      shinyalert(title = "Oh no!", "You must supply numbers in each box!", type = "error")
     }
     })
   
@@ -598,14 +695,18 @@ server <- function(session, input, output) {
     if (input$type_of_ci_2nd == "Parametric"){
       if(second_tab_info$CIupper_correct & second_tab_info$CIlower_correct){
         tagList(p("Correct!"))
-      } else {
+      } else if (second_tab_info$CI_formula) {
         tagList(p("Incorrect. Remember the formula for a 95% CI is (phat - 1.96*SE, phat + 1.96*SE)."))
+      } else {
+        #blank on purpose
       }
     } else if (input$type_of_ci_2nd == "Bootstrap"){
       if(second_tab_info$CIupper_correct & second_tab_info$CIlower_correct){
         tagList(p("Correct!"))
-      } else {
+      } else if(second_tab_info$CI_formula) {
         tagList(p("Incorrect. Remember the 95% CI corresponds to the 0.025 and 0.975 quantile of the bootstrap distribution."))
+      } else {
+        #blank on purpose
       }
     }
   })
