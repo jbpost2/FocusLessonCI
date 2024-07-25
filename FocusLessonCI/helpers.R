@@ -539,24 +539,29 @@ plot_CI <- function(CIdf){
   CIdf$`Lower Bound` <- round(CIdf$lower, 4)
   CIdf$`Upper Bound` <- round(CIdf$upper, 4)
   CIdf$`Group Name` <- as.character(CIdf$group)
+  CIdf$`True Proportion` <- round(CIdf$truth, 4)
   CIdf$Capture <- ifelse(CIdf$col == "Black", "Yes", "No")
   
   if(nrow(CIdf) < 50){
-    g <- ggplot(CIdf, aes(x = sample_number, label2 = `Group Name`, label3 = `Sample Proportion`, label4 = `Lower Bound`, label5 = `Upper Bound`)) +
+    g <- ggplot(CIdf, aes(x = sample_number, label2 = `Group Name`, label3 = `Sample Proportion`, label4 = `Lower Bound`, label5 = `Upper Bound`, label6 = `True Proportion`)) +
       geom_point(aes(x = sample_number, y = phat, color = Capture), size = 3) +
       geom_segment(aes(x = sample_number, xend = sample_number, y = lower, yend = upper, color = Capture), lineend = "square", linewidth = 1) +
       scale_color_manual(values = c("Yes" = "black", "No" = "red")) +
-      geom_hline(yintercept = truth, linewidth = 1.5) +
+      geom_hline(data = tibble(yintercept = CIdf$truth[1], `True Proportion` = CIdf$`True Proportion`[1]),
+                 linewidth = 1.5,
+                 mapping = aes(yintercept = yintercept, label7 = `True Proportion`)) +
       xlab("Sample Data Set") + 
       ylab("Intervals") +
       ggtitle(message) + 
       theme_light() 
   } else {
-    g <- ggplot(CIdf, aes(x = sample_number, label2 = `Group Name`, label3 = `Sample Proportion`, label4 = `Lower Bound`, label5 = `Upper Bound`)) +
+    g <- ggplot(CIdf, aes(x = sample_number, label2 = `Group Name`, label3 = `Sample Proportion`, label4 = `Lower Bound`, label5 = `Upper Bound`, label6 = `True Proportion`)) +
       geom_point(aes(x = sample_number, y = phat, color = Capture), size = 1) +
       geom_segment(aes(x = sample_number, xend = sample_number, y = lower, yend = upper, color = Capture), lineend = "square", linewidth = 0.5) +
       scale_color_manual(values = c("Yes" = "black", "No" = "red")) +
-      geom_hline(yintercept = truth, linewidth = 1) +
+      geom_hline(data = tibble(yintercept = CIdf$truth[1], `True Proportion` = CIdf$`True Proportion`[1]),
+                 linewidth = 1.5,
+                 mapping = aes(yintercept = yintercept, label7 = `True Proportion`)) +
       xlab("Sample Data Set") + 
       ylab("Intervals") +
       ggtitle(message) + 
@@ -565,7 +570,7 @@ plot_CI <- function(CIdf){
   }
   
   
-  ggplotly(g, tooltip = c("label2", "label3", "label4", "label5"))
+  ggplotly(g, tooltip = c("label2", "label3", "label4", "label5", "label6", "label7"))
   # plotCI(x = 1:nrow(CIdf), 
   #        y = CIdf$phat,
   #        li = CIdf$lower, 

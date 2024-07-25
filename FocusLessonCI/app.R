@@ -39,7 +39,7 @@ my_sample <- readRDS("my_sample.rds")
 #truth_p <- pull(my_sample, "FFSP") |> as.numeric() |> mean()
   
 ui <- dashboardPage(
-  # withMathJax(),
+  #withMathJax(),
   dashboardHeader(title = "Confidence Interval Activity", disable = FALSE),
   dashboardSidebar(disable = FALSE,
                    sidebarMenu(
@@ -81,13 +81,22 @@ ui <- dashboardPage(
                   ),
                   br(),
                   fluidRow(
-                    box(
-                      title = "Information about your current dataset",
-                      dataTableOutput("data_set_info"),
-                      width = 6),
-                    box(title = "Information about the above CIs",
-                        uiOutput("info"),
-                      width = 6
+                    column(6, 
+                      box(
+                        title = "Information about your current data table",
+                        dataTableOutput("data_set_info"),
+                        width = 12)
+                      ),
+                    column(6, 
+                      box(title = "Information about the above CIs",
+                          uiOutput("info"),
+                        width = 12
+                      ),
+                      box(
+                        title = "Referesh Plot, Data Table, and Information",
+                        actionButton("refresh", "Check for new data!"),
+                        width = 12
+                      )
                     )
                   )
                 )
@@ -97,27 +106,27 @@ ui <- dashboardPage(
                       titlePanel("Investigating the Data"),
                       fluidPage(
                         fluidRow(
-                          p("Information about the data we are investigating and the purpose of what we'll be doing... Note to me: should consider value boxes"),
+                          p("In this section of the application you can investigate confidence intervals for p = P(SNAP Recipient) for different (sub)populations. Select your group of interest below and your sample size, then click the button to obtain a sample!"),
                           br(),
                           actionButton('reset', "Reset This Exercise")
                         ),
                         br(),
-                        fluidRow(
-                          box(title = "Roughly how wide do you want your 95% confidence interval to be?",
-                              width = 8,
-                            fluidRow(
-                              column(9, 
-                                sliderInput("width", NULL, value = 0.1, min = 0.05, max = 0.5)
-                              ), 
-                              column(3, 
-                                actionButton("sub_width", "Go!")
-                              )
-                            ),
-                            fluidRow(
-                              column(12, uiOutput("sample_size_value"))
-                            )
-                          )
-                        ),
+                        #fluidRow(
+                        #   box(title = "Roughly how wide do you want your 95% confidence interval to be?",
+                        #       width = 8,
+                        #     fluidRow(
+                        #       column(9, 
+                        #         sliderInput("width", NULL, value = 0.1, min = 0.05, max = 0.5)
+                        #       ), 
+                        #       column(3, 
+                        #         actionButton("sub_width", "Go!")
+                        #       )
+                        #     ),
+                        #     fluidRow(
+                        #       column(12, uiOutput("sample_size_value"))
+                        #     )
+                        #   )
+                        # ),
                         uiOutput("sub_pop_ui"),
                         uiOutput("generate_sample"),
                         uiOutput("sub_proportion"),
@@ -169,6 +178,7 @@ server <- function(session, input, output) {
   output$CI_plots <- renderPlotly({
     #grab the data
     input$sample
+    input$refresh
     #input$update_plot
     my_db <- input$db    
     type <- input$ci_type
@@ -190,6 +200,7 @@ server <- function(session, input, output) {
   output$info <- renderUI({
     #grab the data
     input$sample
+    input$refresh
     #input$update_plot
     my_db <- input$db    
     type <- input$ci_type
@@ -214,6 +225,7 @@ server <- function(session, input, output) {
   output$data_set_info <- renderDataTable({
     #grab the data
     input$sample
+    input$refresh
     #input$update_plot
     my_db <- input$db    
     type <- input$ci_type
@@ -243,7 +255,8 @@ server <- function(session, input, output) {
   
   ##################################################################
   #2nd tab stuff
-  dynamic_ui <- reactiveValues(show_subset = FALSE,
+  dynamic_ui <- reactiveValues(#show_subset = FALSE,
+                               show_subset = TRUE,
                                show_proportion = FALSE,
                                show_MOE = FALSE,
                                show_CI = FALSE)
@@ -270,7 +283,8 @@ server <- function(session, input, output) {
 
   observeEvent(input$reset, {
     second_tab_info$message <- NULL
-    dynamic_ui$show_subset <- FALSE
+    #dynamic_ui$show_subset <- FALSE
+    dynamic_ui$show_subset <- TRUE
     dynamic_ui$show_proportion <- FALSE
     dynamic_ui$show_MOE <- FALSE
     dynamic_ui$show_CI <- FALSE
@@ -278,21 +292,21 @@ server <- function(session, input, output) {
     second_tab_info$phat_formula <- FALSE
   })
   
-  observeEvent(input$sub_width, {
-    second_tab_info$message <- tagList(p(paste0("The sample size required to obtain an interval of width ", 
-                                         input$width, 
-                                         " is ", 
-                                         ceiling(1.96^2/input$width^2), 
-                                         ".")))
-    dynamic_ui$show_subset <- TRUE
-    
-  })
+  # observeEvent(input$sub_width, {
+  #   second_tab_info$message <- tagList(p(paste0("The sample size required to obtain an interval of width ", 
+  #                                        input$width, 
+  #                                        " is ", 
+  #                                        ceiling(1.96^2/input$width^2), 
+  #                                        ".")))
+  #   dynamic_ui$show_subset <- TRUE
+  #   
+  # })
   
-  output$sample_size_value <- renderUI({
-    input$sub_width
-    
-    second_tab_info$message
-  })
+  # output$sample_size_value <- renderUI({
+  #   input$sub_width
+  #   
+  #   second_tab_info$message
+  # })
   
   output$sub_pop_ui <- renderUI({
     if(dynamic_ui$show_subset){
@@ -331,7 +345,7 @@ server <- function(session, input, output) {
             id = "get_sample",
             fluidRow(
               column(9, 
-                     sliderInput("sample_size_2", "Sample Size", min = 50, max = 1300, value = 300)
+                     sliderInput("sample_size_2", "Sample Size", min = 200, max = 1300, value = 300)
               ), 
               column(3, 
                      actionButton("sample_it", "Get Sample!")
@@ -427,7 +441,14 @@ server <- function(session, input, output) {
 
   observeEvent(input$sample_it, {
     
-    my_subset <- second_tab_info$full_subset[sample(1:nrow(second_tab_info$full_subset), size = input$sample_size_2, replace = TRUE), ]
+    #make sure we get at least one success in our sample
+    at_least_one <- TRUE
+    while(at_least_one) {
+      my_subset <- second_tab_info$full_subset[sample(1:nrow(second_tab_info$full_subset), size = input$sample_size_2, replace = TRUE), ]
+      if (sum(my_subset$FFSPfac == "Yes") > 0){
+        at_least_one <- FALSE
+      }
+    }
     second_tab_info$subset <- my_subset
     y <- sum(my_subset$FFSPfac == "Yes")
     truth <- mean(my_sample$FFSPfac == "Yes")
@@ -435,7 +456,7 @@ server <- function(session, input, output) {
     second_tab_info$y <- y
     second_tab_info$phat <- phat
     second_tab_info$truth <- truth
-    second_tab_info$MOE <- sqrt(phat*(1-phat)/input$sample_size_2)
+    second_tab_info$MOE <- sqrt(round(phat, 4)*(1-round(phat, 4))/input$sample_size_2)
     
     if(input$hhl == "Include All"){
       hhl_message <- "any language"
@@ -485,7 +506,7 @@ server <- function(session, input, output) {
   output$sub_proportion <- renderUI({
     if(dynamic_ui$show_proportion){
       fluidRow(
-        box(title = "Enter your sample proportion (to 4 decimal places):",
+        box(title = "Enter your sample proportion (to four decimal places):",
             width = 8,
             fluidRow(
               column(9, 
@@ -507,7 +528,7 @@ server <- function(session, input, output) {
     if(!is.numeric(input$proportion)){
       shinyalert(title = "Oh no!", "You must supply a number between 0 and 1!", type = "error")
     } else {
-      if (round(input$proportion, 3) == round(second_tab_info$phat, 3)){
+      if (round(input$proportion, 4) == round(second_tab_info$phat, 4)){
         second_tab_info$phat_correct <- TRUE
         dynamic_ui$show_MOE <- TRUE
       } else {
@@ -531,7 +552,8 @@ server <- function(session, input, output) {
   output$sub_MOE <- renderUI({
     if(dynamic_ui$show_MOE){
       fluidRow(
-        box(title = "Enter the (estimated) margin of error for your sample proportion (to 4 decimal places):",
+        box(title = "Use the sample proportion rounded to four decimal places for all further calculations.\n
+            Enter the (estimated) standard error of your sample proportion (to four decimal places):",
             width = 8,
             fluidRow(
               column(9,
@@ -553,7 +575,7 @@ server <- function(session, input, output) {
     if(!is.numeric(input$MOE)){
       shinyalert(title = "Oh no!", "You must supply a positive number.", type = "error")
     } else {
-      if (round(input$MOE, 3) == round(second_tab_info$MOE, 3)){
+      if (round(input$MOE, 4) == round(second_tab_info$MOE, 4)){
         second_tab_info$MOE_correct <- TRUE
         dynamic_ui$show_CI <- TRUE
       } else {
@@ -568,7 +590,7 @@ server <- function(session, input, output) {
     if(second_tab_info$MOE_correct){
       tagList(p("Correct!"))
     } else if(second_tab_info$MOE_formula){
-      tagList(p("Incorrect. Remember the (estimated) standard error of your sample proportion is the square root of phat*(1-phat)/n."))
+      tagList(p(withMathJax("$$\\text{Incorrect. Remember the (estimated) standard error of your sample proportion is }\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}$$")))
     } else{
       #blank on purpose
     }
@@ -601,16 +623,13 @@ server <- function(session, input, output) {
   })
   
   observeEvent(input$type_of_ci_2nd, {
-    second_tab_info$subset <- my_subset
 
     if (input$type_of_ci_2nd == "Parametric"){
-      second_tab_info$CIlower <- round(second_tab_info$phat,4) - round(qnorm(0.975),2) * round(second_tab_info$MOE,4)
-      second_tab_info$CIupper <- round(second_tab_info$phat,4) + round(qnorm(0.975),2) * round(second_tab_info$MOE,4)
+      second_tab_info$CIlower <- round(second_tab_info$phat, 4) - 1.96 * round(second_tab_info$MOE, 4)
+      second_tab_info$CIupper <- round(second_tab_info$phat, 4) + 1.96 * round(second_tab_info$MOE, 4)
     } else if (input$type_of_ci_2nd == "Bootstrap") {
       phats <- rbinom(10000, size = input$sample_size_2, prob = second_tab_info$phat)/input$sample_size_2
-      second_tab_info$CIboot_values <- phats
-      second_tab_info$CIlower <- quantile(phats, c(0.015, 0.035))
-      second_tab_info$CIupper <- quantile(phats, c(0.965, 0.985))
+      second_tab_info$CIboot_values <- round(phats, 4)
     }
   })
   
@@ -629,14 +648,40 @@ server <- function(session, input, output) {
       g <- ggplot(my_plot_data, aes(x = phat)) +
         geom_histogram(bins = 50, fill = "black", aes(group = Quantile))
 
-      ggplotly(g, tooltip = c("x", "group"))
+      g_plotly <- ggplotly(g, tooltip = c("x", "group"))
+      
+      #determine which bars are non-zero
+      bars_shown <- g_plotly$x$data[[1]]$y > 0 
+      #just get x values where y > 0
+      x_shown <- g_plotly$x$data[[1]]$x[bars_shown]
+      #grab the quantile value that corresponds to the closest one to the quantile of interest
+      #first, get the quantiles from the text element...
+      quants <- lapply(X = g_plotly$x$data[[1]]$text[bars_shown],
+             FUN = sub,
+             pattern = '.*: ',
+             replacement = '') |>
+        unlist() |>
+        as.numeric()
+          
+#      second_tab_info$CIlower <- quantile(phats, c(0.015, 0.035))
+#      second_tab_info$CIupper <- quantile(phats, c(0.965, 0.985))
+      
+      second_tab_info$CIlower <- x_shown[which.min(abs(quants - 0.025))]
+      second_tab_info$CIupper <- x_shown[which.min(abs(quants - 0.975))]
+      g_plotly
     }
   })
   
   output$sub_ci <- renderUI({
     if(dynamic_ui$show_CI){
+      if (!is.null(input$type_of_ci_2nd) && input$type_of_ci_2nd == "Parametric"){
+        title_text = "Enter the lower and upper bounds for a 95% confidence interval for p (to 4 decimal places). Use 1.96 for the multiplier and use the previous values rounded to four decimal places in your calcuations."
+      } else {
+        title_text = "Use the graph above to approximate a 95% confidence interval for p. Use the closest value to the quantile you want and round to four decimal places."
+      }
+      
       fluidRow(
-        box(title = "Enter the lower and upper bounds for a 95% confidence interval (to 4 decimal places):",
+        box(title = title_text,
             width = 8,
             fluidRow(
               column(4,
@@ -673,13 +718,13 @@ server <- function(session, input, output) {
           second_tab_info$CI_formula <- TRUE
         }
       } else if (input$type_of_ci_2nd == "Bootstrap"){
-        if ((input$lower <= second_tab_info$CIlower[2]+0.001) & (input$lower >= second_tab_info$CIlower[1]-0.001)){
+        if ((input$lower <= second_tab_info$CIlower[1]+0.001) & (input$lower >= second_tab_info$CIlower[1]-0.001)){
           second_tab_info$CIlower_correct <- TRUE
         } else {
           second_tab_info$CIlower_correct <- FALSE
           second_tab_info$CI_formula <- TRUE
         }
-        if ((input$upper <= second_tab_info$CIupper[2]+0.001) & (input$upper >= second_tab_info$CIupper[1]-0.001)){
+        if ((input$upper <= second_tab_info$CIupper[1]+0.001) & (input$upper >= second_tab_info$CIupper[1]-0.001)){
           second_tab_info$CIupper_correct <- TRUE
         } else {
           second_tab_info$CIupper_correct <- FALSE
@@ -696,7 +741,7 @@ server <- function(session, input, output) {
       if(second_tab_info$CIupper_correct & second_tab_info$CIlower_correct){
         tagList(p("Correct!"))
       } else if (second_tab_info$CI_formula) {
-        tagList(p("Incorrect. Remember the formula for a 95% CI is (phat - 1.96*SE, phat + 1.96*SE)."))
+        tagList(p(withMathJax("$$\\text{Incorrect. Remember the formula for a 95\\% CI is }\\left(\\hat{p} - 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}, \\hat{p} + 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}\\right)\\text{.}$$")))
       } else {
         #blank on purpose
       }
@@ -704,7 +749,7 @@ server <- function(session, input, output) {
       if(second_tab_info$CIupper_correct & second_tab_info$CIlower_correct){
         tagList(p("Correct!"))
       } else if(second_tab_info$CI_formula) {
-        tagList(p("Incorrect. Remember the 95% CI corresponds to the 0.025 and 0.975 quantile of the bootstrap distribution."))
+        tagList(p("Incorrect. Remember the 95% CI corresponds to the 0.025 and 0.975 quantile of the bootstrap distribution. These may not appear on the graph above so try to use the closest quantiles to 0.025 and 0.975."))
       } else {
         #blank on purpose
       }
