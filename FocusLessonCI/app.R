@@ -7,12 +7,13 @@ library(RSQLite)
 library(plotly)
 library(shinyalert)
 library(shinyjs)
+library(varhandle)
 #library(data.table)
 #plotrix, tidyverse, and tidycensus read in via helpers.R
 
 source("helpers.R")
 
-# #get big sample for the first part that is common to everyone
+# # #get big sample for the first part that is common to everyone
 # my_sample <- get_sample(var = names(variable_info),
 #                        ages = 15:100, state = "all", year = 2022)
 # #convert everything to factors...
@@ -21,17 +22,15 @@ source("helpers.R")
 #          HHLANPfac = factor(as.character(HHLANP), labels = HHLANPvals, levels = names(HHLANPvals)),
 #          LANPfac = factor(as.character(LANP), labels = LANPvals, levels = names(LANPvals)),
 #          LANXfac = factor(as.character(LANX), labels = LANXvals, levels = names(LANXvals)),
-#          FLANPfac = factor(as.character(FLANP), labels = FLANPvals, levels = names(FLANPvals)),
-#          FLANXPfac = factor(as.character(FLANXP), labels = FLANXPvals, levels = names(FLANXPvals)),
-#          FFSPfac = factor(as.character(FFSP), labels = FFSPvals, levels = names(FFSPvals)),
+#          FSfac = factor(as.character(FS), labels = FSvals, levels = names(FSvals)),
 #          WAOBfac = factor(as.character(WAOB), labels = WAOBvals, levels = names(WAOBvals)),
 #          FERfac = factor(as.character(FER), labels = FERvals, levels = names(FERvals)),
 #          SCHLfac = factor(as.character(SCHL), labels = SCHLvals, levels = names(SCHLvals)),
 #          SCHfac = factor(as.character(SCH), labels = SCHvals, levels = names(SCHvals)),
-#          FSCHPfac = factor(as.character(FSCHP), labels = FSCHPvals, levels = names(FSCHPvals)),
 #          RAC1Pfac = factor(as.character(RAC1P), labels = RAC1Pvals, levels = names(RAC1Pvals)),
-#          STfac = factor(as.character(ST), labels = state_names, levels = names(state_names))
-#          )
+#          STfac = factor(as.character(ST), labels = state_names, levels = names(state_names)),
+#          AGEPnum = as.numeric(AGEP)
+#          ) 
 # saveRDS(my_sample2, file = 'my_sample.rds')
 
 my_sample <- readRDS("my_sample.rds")
@@ -65,8 +64,8 @@ ui <- dashboardPage(
                                selected = "basic"),
                   p("Choose a confidence level:"),
                   sliderInput("conf", label = NULL, min = 0.5, max = 0.99, step = 0.01, value = 0.95),
-                  p("Choose a sample size: (a sample size of at least 200 is recommended)"),
-                  numericInput("sample_size", label = NULL, min = 1, max = 400000, value = 300),
+                  p("Choose a sample size: (a sample size of at least 50 is recommended)"),
+                  numericInput("sample_size", label = NULL, min = 20, max = 200000, value = 300),
                   strong("Obtain a sample and construct a confidence interval by clicking the button below."),
                   br(),
                   actionButton("sample", "Get a Sample!"),
@@ -77,30 +76,32 @@ ui <- dashboardPage(
                 mainPanel(
                   fluidRow(
                     #actionButton("update_plot", label = "Check for new data and refresh plot"),
+                      box(title = "Information about the above CIs",
+                          uiOutput("info"),
+                          width = 12
+                      )
+                    ),
+                  fluidRow(
                     plotlyOutput("CI_plots")
                   ),
                   br(),
                   fluidRow(
-                    column(6, 
-                      box(
-                        title = "Information about your current data table",
-                        dataTableOutput("data_set_info"),
-                        width = 12)
+                    column(8, 
+                       box(
+                         title = "Information about your current data table",
+                         dataTableOutput("data_set_info"),
+                         width = 12)
                       ),
-                    column(6, 
-                      box(title = "Information about the above CIs",
-                          uiOutput("info"),
-                        width = 12
-                      ),
-                      box(
-                        title = "Referesh Plot, Data Table, and Information",
-                        actionButton("refresh", "Check for new data!"),
-                        width = 12
-                      )
+                    column(4, 
+                       box(
+                         title = "Referesh Plot, Data Table, and Information",
+                         actionButton("refresh", "Check!"),
+                         width = 12
+                       )
+                    )
                     )
                   )
                 )
-              )
               ),
               tabItem(tabName = "second",
                       titlePanel("Investigating the Data"),
@@ -149,10 +150,14 @@ server <- function(session, input, output) {
     alpha <- 1-input$conf
     n <- input$sample_size
     gname <- input$group_name
+    #first get the full, large data set using the PWGTP as a weight (number of people at that value)
+    #my_sample[rep(seq_along(my_sample$PWGTP), my_sample$PWGTP), ] #takes a long time...
+    #do a weighted sample instead.. there could be some issues with this but there is a lot of data so I think it will be fine
     #get the subset
-    my_subset <- my_sample[sample(1:nrow(my_sample), size = n, replace = FALSE), ]
-    y <- sum(my_subset$FFSPfac == "Yes")
-    truth <- mean(my_sample$FFSPfac == "Yes")
+    index <- sample(1:nrow(my_sample), size = n, replace = TRUE, prob = my_sample$PWGTP/sum(my_sample$PWGTP))
+    my_subset <- my_sample[index, ]
+    y <- sum(my_subset$FSfac == "Yes")
+    truth <- sum((my_sample$FSfac == "Yes") * my_sample$PWGTP)/sum(my_sample$PWGTP)
     #add the username and any restrictions (none here)
     data_df <- data.frame(y = y, n = n, truth = truth, group = gname)  
     
@@ -161,6 +166,10 @@ server <- function(session, input, output) {
     on.exit(DBI::dbDisconnect(con))
     if(my_db == ""){
       shinyalert(title = "Oh no!", "You must supply a name for the data table you want to work with!", type = "error")
+    } else if(check.numeric(my_db)) {
+      shinyalert(title = "Table names must not be numeric.", type = "error")
+    } else if (check.numeric(gname) | (tolower(gname) %in% lexicon::profanity_alvarez)){
+      shinyalert(title = "Either your group name is numeric or there may be a curse word present in your name (this can sometimes be flagged by inocuous words). Please try a different group name.", type = "error")
     } else if(DBI::dbIsValid(con) && !DBI::dbExistsTable(con, my_db)){
       DBI::dbWriteTable(con, my_db, data_df)
     } else if(DBI::dbIsValid(con)){
@@ -216,7 +225,7 @@ server <- function(session, input, output) {
       prop <- mean(ci_df$lower < ci_df$truth & ci_df$upper > ci_df$truth)
       tagList(p(paste0("The true proportion of people aged 18 to 30 receiving SNAP benefits in the US is ", round(ci_df$truth[1], 4), ". \nFrom the set of confidence intervals above, ", 100*round(prop, 4), "% of the intervals contain this population value.")))
     } else {
-      tagList(HTML("<ul><li>Select a data table in the top left box.</li><li>Place your name or group name in the box below.</li><li>Choose the type of interval you want to create, sample size (must match other samples in the data table), confidence level, and sample size.</li><li>Then click 'Get a Sample!' to draw a sample and create a confidence interval for the p = P(SNAP recipient)!</li></ul>"))
+      tagList(HTML("<ul><li>Select a data table in the top left box.</li><li>Place your name or group name in the box below.</li><li>Choose the type of interval you want to create, sample size (must match other samples in the data table), and confidence level.</li><li>Then click 'Get a Sample!' to draw a sample and create a confidence interval for the p = P(SNAP recipient)!</li></ul>"))
     }
 
   })
@@ -326,9 +335,9 @@ server <- function(session, input, output) {
                          label = "Gave Birth to a Child within past 12 months?", 
                          choices = c("Include All", unname(FERvals)[2:3]), 
                          inline = TRUE),
-            radioButtons('fschp', 
+            radioButtons('sch', 
                          label = "Current Student?", 
-                         choices = c("Include All", unname(FSCHPvals)), 
+                         choices = c("Include All", "Yes", "No (not in last 3 months)"), 
                          selected = "Include All", 
                          inline = TRUE)#,
             # selectizeInput('state', "State", choices = c("Include All", unname(state_names)), selected = "Include All")
@@ -345,7 +354,7 @@ server <- function(session, input, output) {
             id = "get_sample",
             fluidRow(
               column(9, 
-                     sliderInput("sample_size_2", "Sample Size", min = 200, max = 1300, value = 300)
+                     sliderInput("sample_size_2", "Sample Size", min = 200, max = 5000, value = 500)
               ), 
               column(3, 
                      actionButton("sample_it", "Get Sample!")
@@ -364,7 +373,7 @@ server <- function(session, input, output) {
     hhl <- input$hhl
     #waob <- input$waob
     fer <- input$fer
-    fschp <- input$fschp
+    sch <- input$sch
     #state <- input$state
 
     if(hhl == "Include All"){
@@ -382,8 +391,12 @@ server <- function(session, input, output) {
     } else if(fer == "No"){
       fer <- FERvals[1:2]
     }
-    if (fschp == "Include All"){
-      fschp <- FSCHPvals
+    if (sch == "Include All"){
+      sch <- SCHvals
+    } else if(sch == "Yes"){
+      sch <- SCHvals[c(2,4)]
+    } else if(sch == "No (not in last 3 months)"){
+      sch <- SCHvals[3]
     }
     # if (state == "Include All"){
     #   state <- state_names
@@ -395,7 +408,7 @@ server <- function(session, input, output) {
       filter(HHL %in% names(HHLvals[which(HHLvals %in% hhl)]),
              #WAOB %in% names(WAOBvals2[which(WAOBvals2 %in% waob)]),
              FER %in% names(FERvals[which(FERvals %in% fer)]),
-             FSCHP %in% names(FSCHPvals[which(FSCHPvals %in% fschp)]))
+             SCH %in% names(SCHvals[which(SCHvals %in% sch)]))
     second_tab_info$subset_max <- nrow(full_subset)
     second_tab_info$full_subset <- full_subset
     
@@ -405,11 +418,11 @@ server <- function(session, input, output) {
     second_tab_info$phat_correct <- FALSE
   })
 
-  observeEvent(ignoreInit = TRUE, list(input$hhl, input$fer, input$fschp), {
+  observeEvent(ignoreInit = TRUE, list(input$hhl, input$fer, input$sch), {
     n <- input$sample_size_2
     hhl <- input$hhl
     fer <- input$fer
-    fschp <- input$fschp
+    sch <- input$sch
 
     if(hhl == "Include All"){
       hhl <- HHLvals
@@ -421,37 +434,38 @@ server <- function(session, input, output) {
     } else if(fer == "No"){
       fer <- FERvals[1:2]
     }
-    if (fschp == "Include All"){
-      fschp <- FSCHPvals
+    if (sch == "Include All"){
+      sch <- SCHvals
+    } else if(sch == "Yes"){
+      sch <- SCHvals[c(2,4)]
+    } else if(sch == "No (not in last 3 months)"){
+      sch <- SCHvals[3]
     }
     
     #get the subset
     full_subset <- my_sample %>%
       filter(HHL %in% names(HHLvals[which(HHLvals %in% hhl)]),
              FER %in% names(FERvals[which(FERvals %in% fer)]),
-             FSCHP %in% names(FSCHPvals[which(FSCHPvals %in% fschp)]))
+             SCH %in% names(SCHvals[which(SCHvals %in% sch)]))
     rows <- nrow(full_subset)
     
     
     updateSliderInput(session, 
                       "sample_size_2", 
-                      max = min(1300, rows), 
+                      max = 5000, 
                       value = min(input$sample_size_2, rows))
   })
 
   observeEvent(input$sample_it, {
     
-    #make sure we get at least one success in our sample
-    at_least_one <- TRUE
-    while(at_least_one) {
-      my_subset <- second_tab_info$full_subset[sample(1:nrow(second_tab_info$full_subset), size = input$sample_size_2, replace = TRUE), ]
-      if (sum(my_subset$FFSPfac == "Yes") > 0){
-        at_least_one <- FALSE
-      }
-    }
+    full_subset <- second_tab_info$full_subset
+    my_subset <- full_subset[sample(1:nrow(full_subset), 
+                                     size = input$sample_size_2, 
+                                    replace = TRUE, 
+                                    prob = full_subset$PWGTP/sum(full_subset$PWGTP)), ]
     second_tab_info$subset <- my_subset
-    y <- sum(my_subset$FFSPfac == "Yes")
-    truth <- mean(my_sample$FFSPfac == "Yes")
+    y <- sum(my_subset$FSfac == "Yes")
+    truth <- sum((full_subset$FSfac == "Yes") * full_subset$PWGTP)/sum(full_subset$PWGTP)
     phat <- y/input$sample_size_2
     second_tab_info$y <- y
     second_tab_info$phat <- phat
@@ -474,12 +488,12 @@ server <- function(session, input, output) {
       fer_message <- "those that have given birth in the past 12 months"
     }
     
-    if(input$fer == "Include All"){
-      fschp_message <- "both current students and non students"
-    } else if(input$fer == "No") {
-      fschp_message <- "non students"
+    if(input$sch == "Include All"){
+      sch_message <- "both current students and non students"
+    } else if(input$sch == "Yes") {
+      sch_message <- "students in private, public or home school"
     } else {
-      fschp_message <- "students"
+      sch_message <- "non-students"
     }
 
     second_tab_info$sample_info_message <- tagList(p(paste0("You sampled from the population consisting of ", 
@@ -487,7 +501,7 @@ server <- function(session, input, output) {
                                                             " households, ",
                                                             fer_message,
                                                             ", and ",
-                                                            fschp_message,
+                                                            sch_message,
                                                             ". The number of people using SNAP benefits from your sample of ",
                                                             input$sample_size_2, 
                                                             " is ",
@@ -718,13 +732,13 @@ server <- function(session, input, output) {
           second_tab_info$CI_formula <- TRUE
         }
       } else if (input$type_of_ci_2nd == "Bootstrap"){
-        if ((input$lower <= second_tab_info$CIlower[1]+0.001) & (input$lower >= second_tab_info$CIlower[1]-0.001)){
+        if ((input$lower <= second_tab_info$CIlower+0.002) & (input$lower >= second_tab_info$CIlower-0.002)){
           second_tab_info$CIlower_correct <- TRUE
         } else {
           second_tab_info$CIlower_correct <- FALSE
           second_tab_info$CI_formula <- TRUE
         }
-        if ((input$upper <= second_tab_info$CIupper[1]+0.001) & (input$upper >= second_tab_info$CIupper[1]-0.001)){
+        if ((input$upper <= second_tab_info$CIupper+0.002) & (input$upper >= second_tab_info$CIupper-0.002)){
           second_tab_info$CIupper_correct <- TRUE
         } else {
           second_tab_info$CIupper_correct <- FALSE
@@ -739,7 +753,7 @@ server <- function(session, input, output) {
   output$CI_information <- renderUI({
     if (input$type_of_ci_2nd == "Parametric"){
       if(second_tab_info$CIupper_correct & second_tab_info$CIlower_correct){
-        tagList(p("Correct!"))
+        tagList(p(paste("Correct! Note: The true proportion for this subset of the population is approximately ", round(second_tab_info$truth, 4))))
       } else if (second_tab_info$CI_formula) {
         tagList(p(withMathJax("$$\\text{Incorrect. Remember the formula for a 95\\% CI is }\\left(\\hat{p} - 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}, \\hat{p} + 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}\\right)\\text{.}$$")))
       } else {
@@ -747,13 +761,30 @@ server <- function(session, input, output) {
       }
     } else if (input$type_of_ci_2nd == "Bootstrap"){
       if(second_tab_info$CIupper_correct & second_tab_info$CIlower_correct){
-        tagList(p("Correct!"))
+        tagList(p(paste("Correct! Note: The true proportion for this subset of the population is approximately ", round(second_tab_info$truth, 4))))
       } else if(second_tab_info$CI_formula) {
         tagList(p("Incorrect. Remember the 95% CI corresponds to the 0.025 and 0.975 quantile of the bootstrap distribution. These may not appear on the graph above so try to use the closest quantiles to 0.025 and 0.975."))
       } else {
         #blank on purpose
       }
     }
+  })
+  
+  #if anything has changed above, reset the 'correct' messages to FALSE
+  observeEvent(input$sample_it, {
+    second_tab_info$CIlower_correct <- FALSE
+    second_tab_info$CIlower_correct <- FALSE
+    second_tab_info$CI_formula <- FALSE
+    second_tab_info$MOE_correct <- FALSE
+    second_tab_info$MOE_formula <- FALSE
+    second_tab_info$phat_correct <- FALSE
+    second_tab_info$phat_formula <- FALSE
+    dynamic_ui$show_MOE <- FALSE
+    second_tab_info$message <- NULL
+    dynamic_ui$show_subset <- TRUE
+    dynamic_ui$show_proportion <- TRUE
+    dynamic_ui$show_MOE <- FALSE
+    dynamic_ui$show_CI <- FALSE
   })
 }
 

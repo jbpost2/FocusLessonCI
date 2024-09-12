@@ -70,14 +70,11 @@ variable_info <- c(
   "HHLANP" = "Detailed household language",
   "LANP" = "Language spoken at home",
   "LANX" = "Language other than English spoken at home",
-  "FLANP" = "Language spoken at home allocation flag",
-  "FLANXP" = "Language other than English allocation flag",
-  "FFSP" = "Yearly food stamp/Supplemental Nutrition Assistance Program (SNAP) recipiency allocation flag",
+  "FS" = "Yearly food stamp/Supplemental Nutrition Assistance Program (SNAP) recipiency",
   "WAOB" = "World area of birth",
   "FER" = "Gave birth to child within the past 12 months",
   "SCHL" = "Educational attainment",
   "SCH" = "School enrollment",
-  "FSCHP" = "School enrollmetn allocation flag",
   "RAC1P" = "Recoded detailed race code"
 )
 
@@ -92,12 +89,6 @@ RAC1Pvals <- c(
   "5"= "American Indian and Alaska Native tribes specified; or American Indian or Alaska Native, not specified and no other races",
   "8"= "Some other race alone"
 )
-
-FSCHPvals <- c(
-  "0"= "No",
-  "1"= "Yes"
-)      
-
 
 SCHvals <- c(
   "0"= "N/A (less than 3 years old)",
@@ -140,9 +131,10 @@ FERvals <- c(
   "1" = "Yes"
 )
 
-FFSPvals <- c(
+FSvals <- c(
+  "0" = "N/A (vacant)",
   "1" = "Yes",
-  "0" = "No"
+  "2" = "No"
 )      
 
 
@@ -437,15 +429,6 @@ LANXvals <- c(#"Language other than English spoken at home",
   "1"= "Yes, speaks another language"
 )
 
-FLANPvals <- c( #"Language spoken at home allocation flag"
-  "0"= "No",
-  "1"= "Yes"
-)
-
-FLANXPvals <- c(#"Language other than English allocation flag",
-  "0"= "No",
-  "1"= "Yes"
-  )
 
 WAOBvals2 <- WAOBvals %>% 
   str_split(" \\(") %>% 
