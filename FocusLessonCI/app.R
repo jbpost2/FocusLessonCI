@@ -52,9 +52,9 @@ ui <- dashboardPage(
               titlePanel("Understanding Confidence"),
               sidebarLayout(
                 sidebarPanel(
-                  strong("Choose the data table to interact with:"),
+                  strong("Choose the data table to interact with (only letters please - no spaces or special characters!):"),
                   textInput("db", NULL),
-                  strong("Give your name or group name:"),
+                  strong("Group Name:"),
                   textInput("group_name", NULL),
                   p("We'll look at confidence intervals for p = P(SNAP Recipient)"),
                   strong("Choose a method for constructing your confidence interval:"),
@@ -70,13 +70,15 @@ ui <- dashboardPage(
                   br(),
                   actionButton("sample", "Get a Sample!"),
                   br(),
-                  "Data comes from the US Census ACS Survey (Public Use Microdata Sample)"
+                  "Data includes individuals in the US from age 15 to age 100.",
+                  br(),
+                  "Data courtesy: U.S. Census Bureau. (2022). American Community Survey Public Use Microdata Sample. U.S. Department of Commerce. Retrieved September 12, 2024, from https://data.census.gov/"
                 ),
                 # Show a plot of the generated CIs
                 mainPanel(
                   fluidRow(
                     #actionButton("update_plot", label = "Check for new data and refresh plot"),
-                      box(title = "Information about the above CIs",
+                      box(title = "Information about the CIs below.",
                           uiOutput("info"),
                           width = 12
                       )
@@ -146,7 +148,7 @@ server <- function(session, input, output) {
   ##################################################################
   #1st tab stuff
   observeEvent(input$sample, {
-    my_db <- input$db
+    my_db <- tolower(input$db)
     alpha <- 1-input$conf
     n <- input$sample_size
     gname <- input$group_name
@@ -164,12 +166,12 @@ server <- function(session, input, output) {
     #add it to the db
     con <- DBI::dbConnect(RSQLite::SQLite(), "class_data.sqlite")
     on.exit(DBI::dbDisconnect(con))
-    if(my_db == ""){
-      shinyalert(title = "Oh no!", "You must supply a name for the data table you want to work with!", type = "error")
+    if(my_db == "" | !grepl('[[:alpha:]]', substr(my_db, 1, 1)) | grepl(' ', my_db)){#grepl("[^\\p{L} ]| ", my_db, perl = TRUE)
+      shinyalert(title = "Oh no!", "You must supply a name for the data table you want to work with! The name should start with a letter and not contain any special symbols (other than an underscore).", type = "error")
     } else if(check.numeric(my_db)) {
       shinyalert(title = "Table names must not be numeric.", type = "error")
     } else if (check.numeric(gname) | (tolower(gname) %in% lexicon::profanity_alvarez)){
-      shinyalert(title = "Either your group name is numeric or there may be a curse word present in your name (this can sometimes be flagged by inocuous words). Please try a different group name.", type = "error")
+      shinyalert(title = "Either your group name is blank, numeric, or there may be a curse word present in your name (this can sometimes be flagged by inocuous words). Please try a different group name.", type = "error")
     } else if(DBI::dbIsValid(con) && !DBI::dbExistsTable(con, my_db)){
       DBI::dbWriteTable(con, my_db, data_df)
     } else if(DBI::dbIsValid(con)){
@@ -189,7 +191,7 @@ server <- function(session, input, output) {
     input$sample
     input$refresh
     #input$update_plot
-    my_db <- input$db    
+    my_db <- tolower(input$db)
     type <- input$ci_type
     alpha <- 1- input$conf
 
@@ -211,7 +213,7 @@ server <- function(session, input, output) {
     input$sample
     input$refresh
     #input$update_plot
-    my_db <- input$db    
+    my_db <- tolower(input$db)
     type <- input$ci_type
     alpha <- 1- input$conf
     
@@ -223,7 +225,7 @@ server <- function(session, input, output) {
       ci_df <- add_ci(data_df, type = type, alpha = alpha)
       
       prop <- mean(ci_df$lower < ci_df$truth & ci_df$upper > ci_df$truth)
-      tagList(p(paste0("The true proportion of people aged 18 to 30 receiving SNAP benefits in the US is ", round(ci_df$truth[1], 4), ". \nFrom the set of confidence intervals above, ", 100*round(prop, 4), "% of the intervals contain this population value.")))
+      tagList(p(paste0("The true proportion of people aged 15 to 100 receiving SNAP benefits in the US is about ", round(ci_df$truth[1], 4), ". \nFrom the set of confidence intervals below, ", 100*round(prop, 4), "% of the intervals contain this population value.")))
     } else {
       tagList(HTML("<ul><li>Select a data table in the top left box.</li><li>Place your name or group name in the box below.</li><li>Choose the type of interval you want to create, sample size (must match other samples in the data table), and confidence level.</li><li>Then click 'Get a Sample!' to draw a sample and create a confidence interval for the p = P(SNAP recipient)!</li></ul>"))
     }
@@ -236,7 +238,7 @@ server <- function(session, input, output) {
     input$sample
     input$refresh
     #input$update_plot
-    my_db <- input$db    
+    my_db <- tolower(input$db)    
     type <- input$ci_type
     alpha <- 1- input$conf
     
@@ -447,7 +449,7 @@ server <- function(session, input, output) {
       filter(HHL %in% names(HHLvals[which(HHLvals %in% hhl)]),
              FER %in% names(FERvals[which(FERvals %in% fer)]),
              SCH %in% names(SCHvals[which(SCHvals %in% sch)]))
-    rows <- nrow(full_subset)
+    rows <- sum(full_subset$PWGTP)
     
     
     updateSliderInput(session, 
@@ -755,7 +757,7 @@ server <- function(session, input, output) {
       if(second_tab_info$CIupper_correct & second_tab_info$CIlower_correct){
         tagList(p(paste("Correct! Note: The true proportion for this subset of the population is approximately ", round(second_tab_info$truth, 4))))
       } else if (second_tab_info$CI_formula) {
-        tagList(p(withMathJax("$$\\text{Incorrect. Remember the formula for a 95\\% CI is }\\left(\\hat{p} - 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}, \\hat{p} + 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}\\right)\\text{.}$$")))
+        tagList(p(withMathJax("$$\\text{Incorrect. Remember the formula for a 95 percent CI is }\\left(\\hat{p} - 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}, \\hat{p} + 1.96*\\sqrt{\\frac{\\hat{p}(1-\\hat{p})}{n}}\\right)\\text{.}$$")))
       } else {
         #blank on purpose
       }
