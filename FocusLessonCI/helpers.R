@@ -487,14 +487,17 @@ add_ci <- function(data_df, type = 'basic', alpha = 0.05, B = 500){
     y <- data_df$y
     n <- data_df$n[1]
     truth <- data_df$truth[1]
-
+    set.seed(1)
+    
     if(type == "basic"){
       CIdf <- do.call(rbind, lapply(X = y, FUN = basicCI, n, alpha)) |> as.data.frame()
     } else if(type == "score"){
       CIdf <- do.call(rbind, lapply(X = y, FUN = scoreCI, n, alpha)) |> as.data.frame()
     } else if(type == "bootstrap"){
-      ci_values <- bootInt(y, n, alpha, B)
+#      set.seed(1)
+      #ci_values <- bootInt(y, n, alpha, B)
       CIdf <- do.call(rbind, lapply(X = y, FUN = bootInt, n, alpha, B = 500)) |> as.data.frame()
+#      CIdf
     } 
     names(CIdf) <- c("lower", "upper")
     CIdf$col <- add_color(CIdf, truth)

@@ -147,6 +147,9 @@ server <- function(session, input, output) {
   
   ##################################################################
   #1st tab stuff
+  
+  CI_data_frame <- reactiveValues(CIdf = NULL)
+  
   observeEvent(input$sample, {
     my_db <- tolower(input$db)
     alpha <- 1-input$conf
@@ -201,7 +204,8 @@ server <- function(session, input, output) {
     if (my_db != "" && DBI::dbExistsTable(con, my_db)){
       data_df <- dbGetQuery(con, paste0("select * from ", my_db))
       #now add the appropriate CI to the plot
-      ci_df <- add_ci(data_df, type = type, alpha = alpha)
+      CI_data_frame$CIdf <- add_ci(data_df, type = type, alpha = alpha)
+      ci_df <- CI_data_frame$CIdf
       plot_CI(ci_df)
     } else {
       NULL
@@ -214,16 +218,16 @@ server <- function(session, input, output) {
     input$refresh
     #input$update_plot
     my_db <- tolower(input$db)
-    type <- input$ci_type
-    alpha <- 1- input$conf
+    #type <- input$ci_type
+    #alpha <- 1- input$conf
     
     con <- DBI::dbConnect(RSQLite::SQLite(), "class_data.sqlite")
     on.exit(DBI::dbDisconnect(con))
     if (my_db != "" && DBI::dbExistsTable(con, my_db)){
-      data_df <- dbGetQuery(con, paste0("select * from ", my_db))
+      #data_df <- dbGetQuery(con, paste0("select * from ", my_db))
       #now add the appropriate CI to the plot
-      ci_df <- add_ci(data_df, type = type, alpha = alpha)
-      
+      #ci_df <- add_ci(data_df, type = type, alpha = alpha)
+      ci_df <- CI_data_frame$CIdf
       prop <- mean(ci_df$lower < ci_df$truth & ci_df$upper > ci_df$truth)
       tagList(p(paste0("The true proportion of people aged 15 to 100 receiving SNAP benefits in the US is about ", round(ci_df$truth[1], 4), ". \nFrom the set of confidence intervals below, ", 100*round(prop, 4), "% of the intervals contain this population value.")))
     } else {
@@ -239,15 +243,16 @@ server <- function(session, input, output) {
     input$refresh
     #input$update_plot
     my_db <- tolower(input$db)    
-    type <- input$ci_type
-    alpha <- 1- input$conf
+    #type <- input$ci_type
+    #alpha <- 1- input$conf
     
     con <- DBI::dbConnect(RSQLite::SQLite(), "class_data.sqlite")
     on.exit(DBI::dbDisconnect(con))
     if (my_db != "" && DBI::dbExistsTable(con, my_db)){
-      data_df <- dbGetQuery(con, paste0("select * from ", my_db))
+      #data_df <- dbGetQuery(con, paste0("select * from ", my_db))
       #now add the appropriate CI to the plot
-      ci_df <- add_ci(data_df, type = type, alpha = alpha)
+      ci_df <- CI_data_frame$CIdf
+      #ci_df <- add_ci(data_df, type = type, alpha = alpha)
       ci_df %>% 
         mutate(p_hat = round(y/n, 4)) %>% 
         select(group, y, p_hat, lower, upper, col) %>% 
@@ -659,7 +664,7 @@ server <- function(session, input, output) {
 
       my_plot_data <- tibble(phat = second_tab_info$CIboot_values) %>%
         arrange(phat) %>%
-        mutate(Quantile = findInterval(phat, quantile(phat, xs))/1000)
+        mutate(Quantile = findInterval(phat, quantile(phat, xs, type = 4))/1000)
 
       g <- ggplot(my_plot_data, aes(x = phat)) +
         geom_histogram(bins = 50, fill = "black", aes(group = Quantile))
