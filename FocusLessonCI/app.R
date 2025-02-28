@@ -52,7 +52,7 @@ ui <- dashboardPage(
               titlePanel("Understanding Confidence"),
               sidebarLayout(
                 sidebarPanel(
-                  strong("Choose the data table to interact with (only letters please - no spaces or special characters!):"),
+                  strong("Choose the data table to interact with (only letters and numbers please - no spaces or special characters!):"),
                   textInput("db", NULL),
                   strong("Group Name:"),
                   textInput("group_name", NULL),
