@@ -739,13 +739,13 @@ server <- function(session, input, output) {
           second_tab_info$CI_formula <- TRUE
         }
       } else if (input$type_of_ci_2nd == "Bootstrap"){
-        if ((input$lower <= second_tab_info$CIlower+0.002) & (input$lower >= second_tab_info$CIlower-0.002)){
+        if ((input$lower <= second_tab_info$CIlower+0.01) & (input$lower >= second_tab_info$CIlower-0.01)){
           second_tab_info$CIlower_correct <- TRUE
         } else {
           second_tab_info$CIlower_correct <- FALSE
           second_tab_info$CI_formula <- TRUE
         }
-        if ((input$upper <= second_tab_info$CIupper+0.002) & (input$upper >= second_tab_info$CIupper-0.002)){
+        if ((input$upper <= second_tab_info$CIupper+0.01) & (input$upper >= second_tab_info$CIupper-0.01)){
           second_tab_info$CIupper_correct <- TRUE
         } else {
           second_tab_info$CIupper_correct <- FALSE
