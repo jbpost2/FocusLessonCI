@@ -660,35 +660,36 @@ server <- function(session, input, output) {
       NULL
     } else if (input$type_of_ci_2nd == "Bootstrap"){
 
+      n <- input$sample_size_2
+      if (n < 500) {
+        binwidth <- 0.005
+      } else {
+        binwidth <- 0.001
+      }
+      
       xs <- c(1:999)/1000 + 0.0005
 
-      my_plot_data <- tibble(phat = second_tab_info$CIboot_values) %>%
-        arrange(phat) %>%
-        mutate(Quantile = findInterval(phat, quantile(phat, xs, type = 4))/1000)
+      my_plot_data <- tibble(phat = second_tab_info$CIboot_values) |>
+        arrange(phat) |>
+        mutate(bin = cut(phat, breaks = seq(0, 1, by = binwidth), include.lowest = TRUE)) |>
+        count(bin) |>
+        mutate(phat = as.numeric(sub("\\((.+),.*", "\\1", bin)) + binwidth/2,
+               left  = as.numeric(sub("\\((.+),.*", "\\1", bin)),
+               right = left + binwidth) |>
+        mutate(Quantile = cumsum(n)/sum(n)) |>
+        rename("Count" = "n")
+        
 
-      g <- ggplot(my_plot_data, aes(x = phat)) +
-        geom_histogram(bins = 50, fill = "black", aes(group = Quantile))
+      g <- ggplot(my_plot_data) +
+        geom_rect(aes(xmin = left, xmax = right, ymin = 0, ymax = Count, phat = phat, label = Quantile),
+                  fill = "black", color = NA)
 
-      g_plotly <- ggplotly(g, tooltip = c("x", "group"))
+      g_plotly <- ggplotly(g, tooltip = c("phat", "label"))
       
       #determine which bars are non-zero
       bars_shown <- g_plotly$x$data[[1]]$y > 0 
-      #just get x values where y > 0
-      x_shown <- g_plotly$x$data[[1]]$x[bars_shown]
-      #grab the quantile value that corresponds to the closest one to the quantile of interest
-      #first, get the quantiles from the text element...
-      quants <- lapply(X = g_plotly$x$data[[1]]$text[bars_shown],
-             FUN = sub,
-             pattern = '.*: ',
-             replacement = '') |>
-        unlist() |>
-        as.numeric()
-          
-#      second_tab_info$CIlower <- quantile(phats, c(0.015, 0.035))
-#      second_tab_info$CIupper <- quantile(phats, c(0.965, 0.985))
-      
-      second_tab_info$CIlower <- x_shown[which.min(abs(quants - 0.025))]
-      second_tab_info$CIupper <- x_shown[which.min(abs(quants - 0.975))]
+      second_tab_info$CIlower <- my_plot_data$phat[which.min(abs(my_plot_data$Quantile-0.025))]
+      second_tab_info$CIupper <- my_plot_data$phat[which.min(abs(my_plot_data$Quantile-0.975))]
       g_plotly
     }
   })
@@ -739,13 +740,13 @@ server <- function(session, input, output) {
           second_tab_info$CI_formula <- TRUE
         }
       } else if (input$type_of_ci_2nd == "Bootstrap"){
-        if ((input$lower <= second_tab_info$CIlower+0.01) & (input$lower >= second_tab_info$CIlower-0.01)){
+        if ((input$lower <= second_tab_info$CIlower+0.001) & (input$lower >= second_tab_info$CIlower-0.001)){
           second_tab_info$CIlower_correct <- TRUE
         } else {
           second_tab_info$CIlower_correct <- FALSE
           second_tab_info$CI_formula <- TRUE
         }
-        if ((input$upper <= second_tab_info$CIupper+0.01) & (input$upper >= second_tab_info$CIupper-0.01)){
+        if ((input$upper <= second_tab_info$CIupper+0.001) & (input$upper >= second_tab_info$CIupper-0.001)){
           second_tab_info$CIupper_correct <- TRUE
         } else {
           second_tab_info$CIupper_correct <- FALSE
