@@ -327,10 +327,10 @@ server <- function(session, input, output) {
   output$sub_pop_ui <- renderUI({
     if(dynamic_ui$show_subset){
       fluidRow(
-        box(title = "What (sub) population do you want to investigate?",
+        box(title = "What segment of the population do you want to investigate?",
             width = 8,
             radioButtons('hhl',
-                         label = "Household Language", 
+                         label = "Language Spoken at Home?", 
                          choices = c("Include All", unname(HHLvals)[c(4)], "Not English Only"), 
                          inline = TRUE), #need to remember to group others!
             # radioButtons('waob', 
@@ -339,7 +339,7 @@ server <- function(session, input, output) {
             #              inline = TRUE, 
             #              selected = c("Include All")),
             radioButtons('fer', 
-                         label = "Gave Birth to a Child within past 12 months?", 
+                         label = "Gave Birth to a Child within Past 12 Months?", 
                          choices = c("Include All", unname(FERvals)[2:3]), 
                          inline = TRUE),
             radioButtons('sch', 
