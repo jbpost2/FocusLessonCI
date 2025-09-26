@@ -697,7 +697,7 @@ server <- function(session, input, output) {
   output$sub_ci <- renderUI({
     if(dynamic_ui$show_CI){
       if (!is.null(input$type_of_ci_2nd) && input$type_of_ci_2nd == "Parametric"){
-        title_text = "Enter the lower and upper bounds for a 95% confidence interval for p (to 4 decimal places). Use 1.96 for the multiplier and use the previous values rounded to four decimal places in your calcuations."
+        title_text = "Enter the lower and upper bounds for a 95% confidence interval for p (to 4 decimal places). Use 1.96 for the multiplier and use the previous values rounded to four decimal places in your calculations."
       } else {
         title_text = "Use the graph above to approximate a 95% confidence interval for p. Use the closest value to the quantile you want and round to four decimal places."
       }
